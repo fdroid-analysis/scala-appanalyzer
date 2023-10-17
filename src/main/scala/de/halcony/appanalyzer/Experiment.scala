@@ -21,7 +21,15 @@ object Experiment extends LogSupport {
   def addEncounteredError(x: Throwable,
                           silent: Boolean = false,
                           stackTrace: Boolean = true): Unit = {
-    if (!silent) error(x.getClass.toString + " " + x.getMessage)
+    if (!silent) {
+      error(x.getClass.toString + " " + x.getMessage)
+      /*telegramBot match {
+        case Some(bot) => bot.sendMessage(
+          s"""${x.getClass.toString}: ${x.getMessage}
+             |${x.getStackTrace.mkString("\n")}
+             |""".stripMargin)
+      }*/
+    }
     if (!silent && stackTrace) error(x.getStackTrace.mkString("\n"))
     Postgres.withDatabaseSession { implicit session =>
       val experimentId = currentExperiment
@@ -150,5 +158,10 @@ object Experiment extends LogSupport {
         .apply()
     }
   }
+
+  /*private var telegramBot: Option[AppAnalyzerBot] = None
+  def initializeTelegram(token: String, chatId: String): Unit = {
+    telegramBot = Some(new AppAnalyzerBot(token, chatId))
+  }*/
 
 }

@@ -36,10 +36,8 @@ trait Device extends LogSupport {
         restartPhone()
       }
     } else if (failedInteractions >= FATAL_ERROR_THRESHOLD) {
-      error(
-        s"we reached $failedInteractions which passed the fatal threshold ... now I will die")
-      throw new FatalError(
-        s"we reached $failedInteractions which passed the fatal threshold ... now I will die")
+      error(s"we reached $failedInteractions which passed the fatal threshold ... now I will die")
+      throw new FatalError(s"we reached $failedInteractions which passed the fatal threshold ... now I will die")
     }
   }
 
@@ -133,7 +131,7 @@ trait Device extends LogSupport {
     }
   }
 
-  def assertForegroundApp(appId: String, throwable: Throwable): Unit = {
+  /*def assertForegroundApp(appId: String, throwable: Throwable): Unit = {
     getForegroundAppId match {
       case Some(value) =>
         if (value != appId) {
@@ -142,5 +140,5 @@ trait Device extends LogSupport {
         }
       case None => throw throwable
     }
-  }
+  }*/
 }

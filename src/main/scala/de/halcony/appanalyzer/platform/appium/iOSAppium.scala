@@ -8,7 +8,7 @@ import org.openqa.selenium.remote.DesiredCapabilities
 import org.openqa.selenium.{By, WebElement}
 import wvlet.log.LogSupport
 
-import java.net.URL
+import java.net.URI
 import java.util
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 
@@ -144,7 +144,7 @@ class iOSAppium(conf: Config) extends Appium with LogSupport {
     capabilities.setCapability("appium:waitForIdleTimeout", 2) // reduce idling time requirement
     capabilities.setCapability("newCommandTimeout", 450) // this means it takes 5 minutes before appium quits
     val driver = new IOSDriver(
-      new URL(s"http://${this.getServer}:${this.getPort}/"),
+      new URI(s"http://${this.getServer}:${this.getPort}/").toURL,
       capabilities
     )
     driver.getBatteryInfo.getState.toString // cargo cult to ensure that appium has started

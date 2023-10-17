@@ -1,18 +1,12 @@
 package de.halcony.appanalyzer.platform.device
 
 import de.halcony.appanalyzer.Config
+import de.halcony.appanalyzer.analysis.exceptions.SkipThisApp
 import de.halcony.appanalyzer.appbinary.apk.APK
 import de.halcony.appanalyzer.appbinary.{Analysis, MobileApp}
 import de.halcony.appanalyzer.platform.frida.FridaScripts
 import de.halcony.appanalyzer.platform.PlatformOS.{Android, PlatformOS}
-import de.halcony.appanalyzer.platform.exceptions.{
-  AppClosedItself,
-  FatalError,
-  FridaDied,
-  UnableToInstallApp,
-  UnableToStartApp,
-  UnableToUninstallApp
-}
+import de.halcony.appanalyzer.platform.exceptions.{AppClosedItself, FatalError, FridaDied, UnableToInstallApp, UnableToStartApp, UnableToUninstallApp}
 import wvlet.log.LogSupport
 
 import java.io.{BufferedWriter, FileWriter}
@@ -146,11 +140,11 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
   }
 
   override def withRunningFrida[T](func: => T): T = {
-    startFrida()
+    // startFrida()
     try {
       func
     } finally {
-      stopFrida()
+       // stopFrida()
     }
   }
 
@@ -204,7 +198,7 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
     info("performing phone restart")
     val fridaWasRunning = runningFrida.nonEmpty
     if (runningFrida.nonEmpty)
-      stopFrida()
+      // stopFrida()
     s"${conf.android.adb} reboot".!
     var counter = 1
     while (!checkBootState() && counter < 10) { // a more dynamic reboot procedure
@@ -223,7 +217,7 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
       "we unlocked the phone, now we wait for another 2 minutes for everything to boot up")
     Thread.sleep(120000)
     if (fridaWasRunning)
-      startFrida()
+       // startFrida()
     Thread.sleep(1000)
     try {
       if (!checkBootState()) {
@@ -279,18 +273,15 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
       stderr = ListBuffer()
       val uninstallFuture: Future[Int] = Future {
         val proc = Process(cmd)
-        uninstallProcess =
-          proc.run(ProcessLogger(stdio append _, stderr append _))
+        uninstallProcess = proc.run(ProcessLogger(stdio append _, stderr append _))
         uninstallProcess.exitValue()
       }
       try {
-        ret = Await.result(uninstallFuture,
-                           Duration(UNINSTALL_TIMEOUT_MS, MILLISECONDS))
+        ret = Await.result(uninstallFuture, Duration(UNINSTALL_TIMEOUT_MS, MILLISECONDS))
         if (ret == 0) {
           success = true
         } else if (ret == 20 || ret == 224) {
-          warn(
-            "we encountered ret code 20 or 224 which indicates that a phone restart is required")
+          warn("we encountered ret code 20 or 224 which indicates that a phone restart is required")
           increaseFailedInteractions()
           restartPhone()
         } else {
@@ -333,17 +324,18 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
       stderr = ListBuffer[String]()
       info(s"starting app $appId")
       cleanObjectionProcess()
-      val cmd =
-        s"${conf.android.objection} --gadget $appId explore --startup-command 'android sslpinning disable'"
+      val cmd = s"${conf.android.objection} --gadget $appId explore --startup-command 'android sslpinning disable'"
       val process = Process(cmd)
-      objection = Some(
-        process.run(
-          ProcessLogger(io => stdio.append(io), err => stderr.append(err))))
-      Thread.sleep(10000) // we give each app 10 seconds to start
+      objection = Some(process.run(ProcessLogger(io => stdio.append(io), err => stderr.append(err))))
+      Thread.sleep(10000) // we give each app 13 seconds to start
       if (objection.get.isAlive()) {
         val fgid = getForegroundAppId.getOrElse(throw AppClosedItself(appId))
         if (fgid != appId) {
           warn(s"foreground id is wrong : '$fgid' instead of '$appId'")
+          if (fgid.startsWith("DeprecatedTargetSdkVersionDialog")) {
+            clearStuckModals() // todo implement dialog handler
+            throw SkipThisApp("Not compatible: Deprecated")
+          }
           closeApp(appId)
         } else {
           done = true
@@ -411,13 +403,34 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
   override def getForegroundAppId: Option[String] = {
     val cmd = s"${conf.android.adb} shell dumpsys activity" // | grep -E 'mCurrentFocus' | cut -d '/' -f1 | sed 's/.* //g'"
     val ret = cmd.!!
-    ret.split("\n").find(_.contains("mCurrentFocus=")) match {
-      case Some(value) =>
-        val _ :: rhs :: Nil = value.split("=").toList
-        val _ :: _ :: idAndAction :: Nil = rhs.split(" ").toList
-        Some(idAndAction.split("/").head)
-      case None =>
-        error("no current focus found")
+    try {
+      ret.split("\n").find(_.contains("mCurrentFocus=")) match {
+        case Some(value) =>
+          if (value.contains(" Application Error: ")) {
+            error("app crashed")
+            None
+          } else {
+            if (value.contains('=')) {
+              val _ :: rhs :: Nil = value.split("=").toList
+              val _ :: _ :: idAndAction :: Nil = rhs.split(" ").toList
+              if (idAndAction.contains('/')) {
+                Some(idAndAction.split("/").head)
+              } else {
+                val id = if (idAndAction.endsWith("}")) idAndAction.dropRight(1) else idAndAction
+                Some(id)
+              }
+            } else {
+              Some(value)
+            }
+
+          }
+        case None =>
+          error("no current focus found")
+          None
+      }
+    } catch {
+      case x: MatchError =>
+        error(x.getMessage())
         None
     }
   }

@@ -43,7 +43,7 @@ class Analysis(description: String,
                actor: ActorPlugin,
                device: Device,
                conf: Config)
-    extends LogSupport {
+  extends LogSupport {
 
   private var id: Option[Int] = None
   private var activeTrafficCollection: Option[TrafficCollection] = None
@@ -57,9 +57,9 @@ class Analysis(description: String,
   }
 
   /** set the running state of the analysis
-    *
-    * @param value the boolean value to which to set it
-    */
+   *
+   * @param value the boolean value to which to set it
+   */
   private def setRunning(value: Boolean): Unit = synchronized {
     running = value
   }
@@ -103,7 +103,7 @@ class Analysis(description: String,
     info("starting traffic collection")
     val interfaceId = related match {
       case Some(value) => Some(value.getId)
-      case None        => None
+      case None => None
     }
     activeTrafficCollection match {
       case Some(_) =>
@@ -170,8 +170,7 @@ class Analysis(description: String,
           if (value == app.id) {
             true
           } else {
-            error(
-              s"the foreground app is $value but we expected ${app.id} - this indicates that the app closed itself")
+            error(s"the foreground app is $value but we expected ${app.id} - this indicates that the app closed itself")
             false
           }
         case None => false
@@ -187,20 +186,20 @@ class Analysis(description: String,
     device.PLATFORM_OS match {
       case PlatformOS.Android =>
         interaction.Interface(this,
-                              appium,
-                              flat = !collectInterfaceElements,
-                              interfaceComment) // nothing to do here
+          appium,
+          flat = !collectInterfaceElements,
+          interfaceComment) // nothing to do here
       case platform.PlatformOS.iOS =>
         if (appium.asInstanceOf[iOSAppium].getRidOfAlerts(conf))
           interaction.Interface(this,
-                                appium,
-                                flat = !collectInterfaceElements,
-                                interfaceComment)
+            appium,
+            flat = !collectInterfaceElements,
+            interfaceComment)
         else
           interaction.Interface(this,
-                                appium,
-                                flat = !collectInterfaceElements,
-                                interfaceComment)
+            appium,
+            flat = !collectInterfaceElements,
+            interfaceComment)
     }
   }
 
@@ -218,8 +217,7 @@ class Analysis(description: String,
           checkIfAppIsStillRunning(true) // initial check if the app startup even worked
           this.checkStop()
           info("extracting start interface")
-          var currentInterface =
-            handlePostAppStartup("initial interface", appium, device)
+          var currentInterface = handlePostAppStartup("initial interface", appium, device)
           currentInterface.insert()
           var running = true
           while (running) {
@@ -271,8 +269,7 @@ class Analysis(description: String,
         throw AnalysisFatal(x.getMessage) // rethrow as it is analysis fatal
     } finally {
       if (activeTrafficCollection.nonEmpty) {
-        warn(
-          "after the analysis is done there is still an active traffic collection. Closing...")
+        warn("after the analysis is done there is still an active traffic collection. Closing...")
         stopTrafficCollection()
       }
       setRunning(false)
@@ -286,7 +283,8 @@ class Analysis(description: String,
     }
     val experiment = Experiment.getCurrentExperiment.id
     Postgres.withDatabaseSession { implicit session =>
-      id = sql"""INSERT INTO interfaceanalysis (
+      id =
+        sql"""INSERT INTO interfaceanalysis (
                               experiment,
                               app_id,
                               app_version,
@@ -302,11 +300,11 @@ class Analysis(description: String,
                             )
                     RETURNING id
                  """
-        .map { entity =>
-          entity.int("id")
-        }
-        .first
-        .apply()
+          .map { entity =>
+            entity.int("id")
+          }
+          .first
+          .apply()
     }
   }
 
@@ -379,12 +377,10 @@ object Analysis extends LogSupport {
       case Some(analysis) if !analysis.getRunning =>
       //everything is fine
       case Some(_) =>
-        throw new FatalError(
-          "this is a logic flaw and must never happen (see two matches before)")
+        throw new FatalError("this is a logic flaw and must never happen (see two matches before)")
       case None =>
         // this is really weird and indicates something fundamentally flawed in the logic
-        warn(
-          "unsetting an analysis that has never been started or created ... skip!")
+        warn("unsetting an analysis that has never been started or created ... skip!")
     }
     currentAnalysis = None
   }
@@ -407,10 +403,8 @@ object Analysis extends LogSupport {
               device.setAppPermissions(app.id)
             }
             do {
-              logger.info(
-                s"setting up analysis ${actor.getDescription} for app $app")
-              val analysis =
-                new Analysis(actor.getDescription, app, actor, device, conf)
+              logger.info(s"setting up analysis ${actor.getDescription} for app $app")
+              val analysis = new Analysis(actor.getDescription, app, actor, device, conf)
               setCurrentAnalysis(analysis)
               analysis.insert()
               try {
@@ -438,7 +432,7 @@ object Analysis extends LogSupport {
                   continue = false
                 case x: StaleElementReferenceException =>
                   analysis.addEncounteredError(new StaleInterfaceElement(x),
-                                               None)
+                    None)
                   analysis.finish(false)
                   continue = false
                 case x: WebDriverException =>
@@ -453,6 +447,9 @@ object Analysis extends LogSupport {
               error(x.getMessage)
             case x: UnableToInstallApp =>
               Experiment.addEncounteredError(x)
+              val analysis = new Analysis(actor.getDescription, app, actor, device, conf)
+              analysis.insert()
+              analysis.finish(false)
             case x: UnableToUninstallApp =>
               Experiment.addEncounteredError(x)
           } finally {

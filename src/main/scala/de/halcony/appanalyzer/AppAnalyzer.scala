@@ -1,40 +1,26 @@
 package de.halcony.appanalyzer
 
-import com.mchange.v3.concurrent.BoundedExecutorService
 import de.halcony.appanalyzer.analysis.Analysis
 import de.halcony.appanalyzer.analysis.plugin.{ActorPlugin, PluginManager}
 import de.halcony.appanalyzer.appbinary.MobileApp
-import de.halcony.appanalyzer.appbinary.apk.APK
-import de.halcony.appanalyzer.appbinary.ipa.IPA
 import de.halcony.appanalyzer.database.Postgres
-import de.halcony.appanalyzer.platform.PlatformOS.{Android, PlatformOS}
+import de.halcony.appanalyzer.platform.PlatformOS
 import de.halcony.appanalyzer.platform.appium.Appium
-import de.halcony.appanalyzer.platform.device.{AndroidDeviceNonRoot, AndroidEmulatorRoot, Device}
 import de.halcony.appanalyzer.platform.exceptions.FatalError
-import de.halcony.appanalyzer.platform.{PlatformOS, device}
+import de.halcony.appanalyzer.setup.AppsFolder.getRelevantApps
+import de.halcony.appanalyzer.setup.Args.{getDevice, initializeExperiment, readParameters}
 import de.halcony.argparse.{OptionalValue, Parser, ParsingException, ParsingResult}
 import scalikejdbc.scalikejdbcSQLInterpolationImplicitDef
-import spray.json.{JsObject, JsString, JsonParser}
 import wvlet.log.LogSupport
 
-import java.io.{File, FileWriter}
-import java.util.concurrent.Executors
-import scala.collection.mutable.{Map => MMap}
-import scala.concurrent.duration.Duration.Inf
-import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutorService, Future}
+import java.io.File
+import scala.annotation.unused
 import scala.io.Source
 import scala.io.StdIn.readLine
 
 object AppAnalyzer extends LogSupport {
 
-  private val executorService = new BoundedExecutorService(
-    Executors.newFixedThreadPool(10), // a pool of ten Threads
-    100, // block new tasks when 100 are in process
-    50 // restart accepting tasks when the number of in-process tasks falls below 50
-  )
-  private implicit val executionContext: ExecutionContextExecutorService = ExecutionContext.fromExecutorService(executorService)
-
-  val parser: Parser = Parser("AppAnalyzer",
+  private val parser: Parser = Parser("AppAnalyzer",
     "run apps and analyze their consent dialogs")
     .addFlag("verbose","v","verbose","if set a stacktrace is provided with any fatal error")
     .addOptional("config",
@@ -45,7 +31,7 @@ object AppAnalyzer extends LogSupport {
     .addSubparser(PluginManager.parser)
     .addSubparser(Parser("removedAnalysis", "delete listed analysis ids")
       .addPositional("analysisIds", "csv list of ids or file containing list of ids")
-      .addDefault[(ParsingResult,Config) => Unit]("func", deleteAnalysisMain))
+      .addDefault[(ParsingResult,Config) => Unit]("func", deleteAnalysis))
     .addSubparser(Parser("run","run an action/analysis")
       .addPositional("platform","the platform to be analyzed [android_device,android_device_non_root,android_emulator_root,ios]")
       .addPositional("path", "path to the required data for the chosen action")
@@ -62,6 +48,7 @@ object AppAnalyzer extends LogSupport {
         .addOptional("parameters","p","parameters",None,"a csv list of <key>=<value> pairs")
         .addDefault[(ParsingResult,Config) => Unit]("func",runPluginExperiment,"runs an experiment using the specified plugin")))
 
+  @unused
   private object IgnoreMe extends Throwable
 
   /** main function parsing config and command line
@@ -83,20 +70,12 @@ object AppAnalyzer extends LogSupport {
     }
   }
 
-  def getBatchSize(pargs : ParsingResult) : Option[Int] = {
-    try {
-      Some(pargs.getValue[String]("batchSize").toInt)
-    } catch {
-      case _ : Throwable => None
-    }
-  }
-
   /** the main to delete the provided analysis ids
     *
     * @param pargs the parsed command line arguments
     * @param conf the provided configuration
     */
-  def deleteAnalysisMain(pargs : ParsingResult, conf : Config) : Unit = {
+  private def deleteAnalysis(pargs : ParsingResult, conf : Config) : Unit = {
     Postgres.initializeConnectionPool(conf)
     val delete = Source.fromFile(pargs.getValue[String]("path"))
     try {
@@ -129,191 +108,34 @@ object AppAnalyzer extends LogSupport {
   }
 
 
-
-  private def getDevice(pargs: ParsingResult, conf: Config): Device = {
-    pargs.getValue[String]("platform") match {
-      case "android_device" => device.AndroidDevice(conf)
-      case "android_device_non_root" => new AndroidDeviceNonRoot(conf)
-      case "android_emulator_root" => new AndroidEmulatorRoot(conf)
-      case "ios" => device.iOSDevice(conf)
-      case x =>
-        throw new RuntimeException(s"device type $x is not yet supported")
-    }
-  }
-
-  private def readManifestFile(path : String) : Map[String,MobileApp] = {
-    if (new File(path).exists) {
-      info("detected app manifest")
-      val source = Source.fromFile(path)
-      try {
-        JsonParser(source.getLines().mkString("\n")).asInstanceOf[JsObject].fields.map {
-          case (path : String, app : JsObject) =>
-            path -> appbinary.MobileApp(
-              app.fields("id").asInstanceOf[JsString].value,
-              app.fields("version").asInstanceOf[JsString].value,
-              app.fields("os").asInstanceOf[JsString].value.toLowerCase match {
-                case "android" => PlatformOS.Android
-                case "ios" => PlatformOS.iOS
-              },
-              app.fields("path").asInstanceOf[JsString].value,
-            )
-          case _ =>
-            error("manifest seems broken")
-            "NO" -> appbinary.MobileApp("NO","NO",Android,"NO")
-        }.filter{case (path,_) => path != "NO"}
-      } finally {
-        source.close()
-      }
-    } else {
-      Map()
-    }
-  }
-
-  private def writeManifestFile(path : String, apps : Map[String,MobileApp]) : Unit = {
-    val file = new FileWriter(new File(path))
-    try {
-      file.write(JsObject(apps.map {
-        case (path,app) =>
-          path -> JsObject(
-            "id" -> JsString(app.id),
-            "version" -> JsString(app.version),
-            "os" -> JsString(app.getOsString),
-            "path" -> JsString(app.path)
-          )
-      }).prettyPrint)
-    } finally {
-      file.flush()
-      file.close()
-    }
-  }
-
-  /** filters the apps contained in the folder by already analyzed apps and creates MobileApp objects
-   *
-   * @param appPaths the paths to all the relevant app packages
-   * @param conf the configuration
-   * @param os the operating system for which the apps are
-   * @return a list of MobileApp objects
-   */
-  private def filterAppsInFolder(folderPath : String, appPaths: List[String], conf : Config, os : PlatformOS, filtering : Boolean) : List[MobileApp] = {
-    val manifestFilePath = s"$folderPath/manifest.json"
-    val manifest = MMap(readManifestFile(manifestFilePath).toList :_*)
-    val inspector = os match {
-      case Android => APK(conf)
-      case PlatformOS.iOS => IPA(conf)
-    }
-    val alreadyChecked : Set[String] = if(filtering) Experiment.getAnalyzedApps.map(_.id).toSet else Set()
-    val appFuture = Future.sequence {
-      appPaths.map {
-        path =>
-          Future {
-            try {
-              val app = manifest.synchronized(manifest.get(path)) match {
-                case Some(app) => app
-                case None =>
-                  warn(s"app $path not contained in the manifest.json")
-                  val app = appbinary.MobileApp(inspector.getAppId(appbinary.MobileApp("", "", os, path)), "NA", os, path)
-                  manifest.synchronized(manifest.addOne(path -> app))
-                  app
-              }
-              if(alreadyChecked.contains(app.id)) {
-                None
-              } else {
-                Some(app)
-              }
-            } catch {
-              case x: Throwable =>
-                error(x.getMessage)
-                None
-            }
-          }
-      }
-    }
-    val ret = Await.result(appFuture,Inf).filter(_.nonEmpty).map(_.get)
-    writeManifestFile(manifestFilePath,manifest.toMap)
-    ret
-  }
-
-  private def getOnlyApps(only : Option[String]) : Option[Set[String]] = {
-    only match {
-      case Some(onlyElement) =>
-        if(new File(onlyElement).exists()) {
-          val source = Source.fromFile(onlyElement)
-          try {
-            Some(source.getLines().toSet)
-          } finally {
-            source.close()
-          }
-        } else {
-          Some(onlyElement.split(",").toSet)
-        }
-      case None => None
-    }
-  }
-
-  /** takes the provided path and returns the limited subset of all contained apps
-   *
-   * @param pargs the parsed command line arguments
-   * @param device the device to be used
-   * @param conf the parsed config
-   * @return a list of mobile apps contained in the path
-   */
-  private def getRelevantApps(pargs : ParsingResult, device : Device, conf : Config, filtering : Boolean = true) : List[MobileApp] = {
-    val path = pargs.getValue[String]("path")
-    val apps = device.PLATFORM_OS match {
-      case Android =>
-        val (apks,folder) = if(new File(path).isDirectory) {
-          (new File(path).listFiles().filter(_.isFile).filter(_.getPath.endsWith(".apk")).map(_.getPath).toList,path)
-        }  else {
-          assert(path.endsWith(".apk"), s"path has to end with apk if not a directory in $path")
-          (List(path),new File(path).getParentFile.getPath)
-        }
-        filterAppsInFolder(folder,apks,conf,Android,filtering)
-      case PlatformOS.iOS =>
-        val (ipas,folder) : (List[String],String) = if(new File(path).isDirectory) {
-          (new File(path).listFiles().filter(_.isFile).filter(_.getPath.endsWith(".ipa")).map(_.getPath).toList,path)
-        } else {
-          assert(path.endsWith(".ipa"), s"path has to end with ipa if not a directory in $path")
-          (List(path), new File(path).getParentFile.getPath)
-        }
-        filterAppsInFolder(folder,ipas,conf,PlatformOS.iOS,filtering)
-
-    }
-    val appSubset = apps.slice(0,getBatchSize(pargs).getOrElse(apps.length))
-    getOnlyApps(pargs.get[OptionalValue[String]]("only").value) match {
-      case Some(filterList) =>
-        appSubset.filter(app => filterList.contains(app.id))
-      case None => appSubset
-    }
-  }
-
-
   /** wrapper to run arbitrary analysis for all apps contained in the batch with a possible resume flag
    *
    * @param getNextActor a function creating the actor for reach analysis
    * @param pargs the parsed command line arguments
    * @param conf the configuration
    */
-  private def runExperiment(getNextActor : => ActorPlugin, pargs: ParsingResult, conf: Config, empty : Boolean) : Unit = {
+  private def runExperiment(getNextActor : => ActorPlugin, pargs: ParsingResult, conf: Config, osOnlyAnalysis : Boolean) : Unit = {
     val device = getDevice(pargs, conf)
     Postgres.initializeConnectionPool(conf)
-    val description = pargs.getValue[String]("description")
-    info(s"running $description")
-    pargs.get[OptionalValue[String]]("continue").value match {
-      case Some(value) => Experiment.loadExperiment(value.toInt)
-      case None => Experiment.createNewExperiment(description)
+    initializeExperiment(pargs)
+
+    if (conf.telegram.enable) {
+      info("enabling telegram bot")
+      // Experiment.initializeTelegram(conf.telegram.token, conf.telegram.chatId)
     }
+
     try {
-      if(!empty) {
+      if(osOnlyAnalysis) {
+        Analysis.runAnalysis(getNextActor, MobileApp("EMPTY","EMPTY",device.PLATFORM_OS,"EMPTY"), device, conf)
+      } else { // app analysis
         val apps = getRelevantApps(pargs, device, conf)
-        var counter = apps.length
+        var appsRemaining = apps.length
         apps.foreach {
           app =>
-            info(s"we have $counter app${if (counter > 1) "s" else ""} to analyze")
+            info(s"we have $appsRemaining app${if (appsRemaining > 1) "s" else ""} to analyze")
             Analysis.runAnalysis(getNextActor, app, device, conf)
-            counter = counter - 1
+            appsRemaining -= 1
         }
-      } else {
-        Analysis.runAnalysis(getNextActor, MobileApp("EMPTY","EMPTY",device.PLATFORM_OS,"EMPTY"), device, conf)
       }
     } catch {
       case x : FatalError =>
@@ -336,19 +158,11 @@ object AppAnalyzer extends LogSupport {
   private def runPluginExperiment(pargs : ParsingResult, conf : Config) : Unit = {
     val pluginName = pargs.getValue[String]("plugin")
     val empty = pargs.getValue[Boolean]("empty")
-    val parameters : Map[String,String] = pargs.get[OptionalValue[String]]("parameters").value match {
-      case Some(keyvaluecsv) =>
-        keyvaluecsv.split(",").map {
-          keyValue =>
-            keyValue.split("=").toList match {
-              case key :: value :: Nil => key -> value
-              case x => throw new RuntimeException(s"element $keyValue of $keyvaluecsv has malformed split: $x")
-            }
-        }.toMap
-      case None => Map[String,String]()
-    }
+    val parameters : Map[String,String] = readParameters(pargs.get[OptionalValue[String]]("parameters"))
+
     val manager = PluginManager.getPluginManager(conf)
-    runExperiment(manager.loadPlugin(pluginName,parameters),pargs,conf,empty)
+    val actor = manager.loadPlugin(pluginName,parameters)
+    runExperiment(actor, pargs, conf, empty)
   }
 
   /** perform functionality check of the currently connect device
@@ -370,6 +184,8 @@ object AppAnalyzer extends LogSupport {
     val path : String = pargs.getValue[String]("path")
     println(s"We are supposed to work on ${device.PLATFORM_OS}")
     println(s"As our Canary App we are using $path")
+    val id = path.split('/').last.split('.').dropRight(1).mkString(".").split('_').dropRight(1).mkString("_")
+    println(id)
 
     def tryApiCommand(description : String, failureHint : Option[String] = None, optional : Boolean = false)(func : => Option[String]): Unit ={
       try {
@@ -397,7 +213,7 @@ object AppAnalyzer extends LogSupport {
     }
 
     tryApiCommand("device.startFrida") {
-      device.startFrida()
+      // device.startFrida()
       None
     }
 
@@ -414,6 +230,7 @@ object AppAnalyzer extends LogSupport {
 
     tryApiCommand("appPackageAnalysis.getAppId") {
       Some(device.getAppPackageAnalysis(conf).getAppId(app))
+      None
     }
 
     tryApiCommand("installApp") {
@@ -423,7 +240,7 @@ object AppAnalyzer extends LogSupport {
 
     val appId = device.getAppPackageAnalysis(conf).getAppId(app)
 
-    tryApiCommand("grantPermissios") {
+    tryApiCommand("grantPermissions") {
       device.setAppPermissions(appId)
       None
     }
@@ -454,6 +271,7 @@ object AppAnalyzer extends LogSupport {
         appium =>
           Some(appium.findElementsByXPath("//*").map(_.getText.trim).filter(_ != "").mkString("\n"))
       }
+      None
     }
 
     // everything works as intended

@@ -77,7 +77,7 @@ testOptions += Tests.Argument(TestFrameworks.JUnit, "-a", "-v")
 checkstyleConfigLocation := CheckstyleConfigLocation.File("config/checkstyle/google_checks.xml")
 checkstyleSeverityLevel := Some(CheckstyleSeverityLevel.Info)
 
-sonatypeProfileName := "de.halcony"
+// sonatypeProfileName := "de.halcony"
 // this is required for sonatype sync requirements
 ThisBuild / scmInfo := Some(
   ScmInfo(
@@ -102,9 +102,9 @@ ThisBuild / homepage := Some(url("https://github.com/simkoc/scala-appanalyzer"))
 
 // below is pretty much cargo cult/fuzzing....
 import ReleaseTransformations._
-releasePublishArtifactsAction := PgpKeys.publishSigned.value
+// releasePublishArtifactsAction := PgpKeys.publishSigned.value
 releaseVersionBump := sbtrelease.Version.Bump.Bugfix
-publishTo := sonatypePublishToBundle.value
+// publishTo := sonatypePublishToBundle.value
 releaseProcess := Seq[ReleaseStep](
   runClean,
   runTest,

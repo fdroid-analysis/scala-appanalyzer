@@ -53,7 +53,8 @@ class MitmAddon:
     def request(self, flow: http.HTTPFlow):
         r: http.HTTPRequest = flow.request
         self.cur.execute(
-            "INSERT INTO request (run, start_time, host, port, method, scheme, authority, path, http_version, content_raw) VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;",
+            "INSERT INTO request (run, start_time, host, port, method, scheme, authority, path, http_version, "
+            "content_raw) VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;",
             (self.run_id, datetime.fromtimestamp(r.timestamp_start), r.pretty_host, r.port, r.method, r.scheme, r.authority,
              r.path,
              r.http_version, r.content))

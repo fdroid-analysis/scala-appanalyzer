@@ -60,6 +60,10 @@ case class Emulator(emulator: String,
                     proxyIP: Option[String],
                     proxyPort: Option[String])
 
+case class Telegram(enable: Boolean,
+                    token: String,
+                    chatId: String)
+
 case class Config(timeoutMilli: Long,
                   verbose: Boolean,
                   appium: String,
@@ -70,7 +74,8 @@ case class Config(timeoutMilli: Long,
                   devicePrep: DevicePreparation,
                   emulator: Option[Emulator],
                   android: AndroidAnalysis,
-                  ios: iOS)
+                  ios: iOS,
+                  telegram: Telegram)
     extends HasPluginManagerConfiguration {
 
   override def getPluginManagerConfiguration: PluginManagerConfiguration =
@@ -106,7 +111,9 @@ object Config extends DefaultJsonProtocol {
   implicit val emulatorFormat: RootJsonFormat[Emulator] =
     jsonFormat5(Emulator)
 
-  implicit val configFormat: RootJsonFormat[Config] = jsonFormat11(Config.apply)
+  implicit val telegramFormat: RootJsonFormat[Telegram] = jsonFormat3(Telegram)
+
+  implicit val configFormat: RootJsonFormat[Config] = jsonFormat12(Config.apply)
 
   /** given a file path parses the configuration file
     *

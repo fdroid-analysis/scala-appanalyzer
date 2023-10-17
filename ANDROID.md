@@ -32,7 +32,7 @@ using `adb shell "su -c /data/local/tmp/frida-server"`. Do not forget to stop it
 he `scala-appanalyzer`.
 
 If you have trouble starting frida and encounter the error message that it cannot bind to its port. You need to check 
-if `frida-server` is currently still running using `adb shell 'ps -e | grep frida-server'` and then kill the 
+if `frida-server` is currently still running using `adb shell 'ps -e | grep ndk'` and then kill the 
 corresponding process.
 
 ### 3. Final Configurations
