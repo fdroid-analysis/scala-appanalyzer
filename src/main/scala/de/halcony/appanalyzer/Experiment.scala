@@ -3,6 +3,7 @@ package de.halcony.appanalyzer
 import de.halcony.appanalyzer.appbinary.MobileApp
 import de.halcony.appanalyzer.database.Postgres
 import de.halcony.appanalyzer.platform.exceptions.FatalError
+import de.halcony.appanalyzer.platform.telegram.AppAnalyzerBot
 import scalikejdbc.scalikejdbcSQLInterpolationImplicitDef
 import wvlet.log.LogSupport
 
@@ -23,12 +24,13 @@ object Experiment extends LogSupport {
                           stackTrace: Boolean = true): Unit = {
     if (!silent) {
       error(x.getClass.toString + " " + x.getMessage)
-      /*telegramBot match {
+      telegramBot match {
         case Some(bot) => bot.sendMessage(
           s"""${x.getClass.toString}: ${x.getMessage}
              |${x.getStackTrace.mkString("\n")}
              |""".stripMargin)
-      }*/
+        case _ =>
+      }
     }
     if (!silent && stackTrace) error(x.getStackTrace.mkString("\n"))
     Postgres.withDatabaseSession { implicit session =>
@@ -159,9 +161,9 @@ object Experiment extends LogSupport {
     }
   }
 
-  /*private var telegramBot: Option[AppAnalyzerBot] = None
+  private var telegramBot: Option[AppAnalyzerBot] = None
   def initializeTelegram(token: String, chatId: String): Unit = {
     telegramBot = Some(new AppAnalyzerBot(token, chatId))
-  }*/
+  }
 
 }

@@ -121,7 +121,7 @@ object AppAnalyzer extends LogSupport {
 
     if (conf.telegram.enable) {
       info("enabling telegram bot")
-      // Experiment.initializeTelegram(conf.telegram.token, conf.telegram.chatId)
+      Experiment.initializeTelegram(conf.telegram.token, conf.telegram.chatId)
     }
 
     try {
