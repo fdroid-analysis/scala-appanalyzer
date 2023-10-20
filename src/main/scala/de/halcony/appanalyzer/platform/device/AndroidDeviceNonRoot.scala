@@ -1,6 +1,7 @@
 package de.halcony.appanalyzer.platform.device
 import de.halcony.appanalyzer.Config
 import de.halcony.appanalyzer.platform.PlatformOS.{Android, PlatformOS}
+import de.halcony.appanalyzer.platform.appium.Appium
 import de.halcony.appanalyzer.platform.exceptions.FatalError
 
 import scala.sys.process._
@@ -77,7 +78,7 @@ class AndroidDeviceNonRoot(conf: Config) extends AndroidDevice(conf) {
 
   /*override def uninstallApp(appId: String): Unit = ???*/
 
-  override def startApp(appId: String, retries: Int): Unit = {
+  override def startApp(appId: String, retries: Int, appium: Option[Appium] = None): Unit = {
     s"${conf.android.adb} shell monkey -p $appId 1".!
   }
 

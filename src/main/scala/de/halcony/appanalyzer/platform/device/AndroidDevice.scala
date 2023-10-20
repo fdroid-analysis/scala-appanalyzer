@@ -1,11 +1,11 @@
 package de.halcony.appanalyzer.platform.device
 
 import de.halcony.appanalyzer.Config
-import de.halcony.appanalyzer.analysis.exceptions.SkipThisApp
 import de.halcony.appanalyzer.appbinary.apk.APK
 import de.halcony.appanalyzer.appbinary.{Analysis, MobileApp}
 import de.halcony.appanalyzer.platform.frida.FridaScripts
 import de.halcony.appanalyzer.platform.PlatformOS.{Android, PlatformOS}
+import de.halcony.appanalyzer.platform.appium.Appium
 import de.halcony.appanalyzer.platform.exceptions.{AppClosedItself, FatalError, FridaDied, UnableToInstallApp, UnableToStartApp, UnableToUninstallApp}
 import wvlet.log.LogSupport
 
@@ -314,29 +314,38 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
     }
   }
 
-  override def startApp(appId: String, retries: Int = 3): Unit = {
+  override def startApp(appId: String, retries: Int = 3, appium: Option[Appium] = None): Unit = {
     var counter = 0
     var done = false
+    var start: Boolean = true
     var stdio = ListBuffer[String]()
     var stderr = ListBuffer[String]()
     while (counter < retries && !done) {
-      stdio = ListBuffer[String]()
-      stderr = ListBuffer[String]()
-      info(s"starting app $appId")
-      cleanObjectionProcess()
-      val cmd = s"${conf.android.objection} --gadget $appId explore --startup-command 'android sslpinning disable'"
-      val process = Process(cmd)
-      objection = Some(process.run(ProcessLogger(io => stdio.append(io), err => stderr.append(err))))
-      Thread.sleep(10000) // we give each app 13 seconds to start
+      if (start) {
+        val buffers = startAppWithObjection(appId)
+        stdio = buffers._1
+        stderr = buffers._2
+        Thread.sleep(10000) // we give each app 10 seconds to start
+      }
       if (objection.get.isAlive()) {
         val fgid = getForegroundAppId.getOrElse(throw AppClosedItself(appId))
         if (fgid != appId) {
           warn(s"foreground id is wrong : '$fgid' instead of '$appId'")
-          if (fgid.startsWith("DeprecatedTargetSdkVersionDialog")) {
-            clearStuckModals() // todo implement dialog handler
-            throw SkipThisApp("Not compatible: Deprecated")
+          appium match {
+            case Some(appium) =>
+              info(s"trying to close potential system dialogs")
+              val closedDialog: Boolean = maybeCloseDialog(fgid, appium)
+              if (closedDialog) {
+                start = false
+                Thread.sleep(400) // wait for dialog to close
+              } else {
+                appium.getAllInterfaceElements.foreach(e => println(s"${e.getElementType}: ${e.getText}"))
+                start = true
+              }
+            case _ =>
+              closeApp(appId)
+              start = true
           }
-          closeApp(appId)
         } else {
           done = true
         }
@@ -351,13 +360,56 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
       objection = None
       info("finally unable to start app, throwing corresponding error")
       // we do not need to increase failed interactions as this has already been done in the loop
-      throw UnableToStartApp(
-        appId,
-        s"STDIO\n${stdio.mkString("\n")}\nSTDERR\n${stderr.mkString("\n")}")
+      throw UnableToStartApp(appId, s"STDIO\n${stdio.mkString("\n")}\nSTDERR\n${stderr.mkString("\n")}")
     } else {
       // only successfully starting an app counts as a failure reset
       resetFailedInteractions()
     }
+  }
+
+  private def startAppWithObjection(appId: String): (ListBuffer[String], ListBuffer[String]) = {
+    val stdio = ListBuffer[String]()
+    val stderr = ListBuffer[String]()
+    info(s"starting app $appId")
+    cleanObjectionProcess()
+    val cmd = s"${conf.android.objection} --gadget $appId explore --startup-command 'android sslpinning disable'"
+    val process = Process(cmd)
+    objection = Some(process.run(ProcessLogger(io => stdio.append(io), err => stderr.append(err))))
+    Tuple2(stdio, stderr)
+  }
+
+  private def maybeCloseDialog(fgid: String, appium: Appium): Boolean = {
+    val interfaceElements = appium.getAllInterfaceElements
+    if (fgid.startsWith("DeprecatedTargetSdkVersionDialog")) {
+      val deprecationDialog = interfaceElements.find(e =>
+        e.getText == "This app was built for an older version of Android and may not work properly. " +
+          "Try checking for updates, or contact the developer."
+        && e.getElementType == "android.widget.TextView")
+      deprecationDialog match {
+        case Some(_) =>
+          val okButton = interfaceElements.find(e => e.getText == "OK" && e.getElementType == "android.widget.Button")
+          okButton match {
+            case Some(button) =>
+              button.click()
+              info(s"closed deprecation dialog")
+              return true
+          }
+      }
+    } else if (fgid.endsWith(" Application Error: com.android.statementservice}")) {
+      val intentVerificationStopping = interfaceElements.find(e =>
+        e.getText == "Intent Filter Verification Service keeps stopping"
+        && e.getElementType == "android.widget.TextView")
+      intentVerificationStopping match {
+        case Some(_) =>
+          val touch = appium.touchCoordinate(100, 200)
+          // appium.goBack()
+          if (touch) {
+            info("closed intent verification dialog")
+            return true
+          }
+      }
+    }
+    false
   }
 
   override def closeApp(appId: String): Unit = {
@@ -407,8 +459,7 @@ case class AndroidDevice(conf: Config) extends Device with LogSupport {
       ret.split("\n").find(_.contains("mCurrentFocus=")) match {
         case Some(value) =>
           if (value.contains(" Application Error: ")) {
-            error("app crashed")
-            None
+            Some(value)
           } else {
             if (value.contains('=')) {
               val _ :: rhs :: Nil = value.split("=").toList

@@ -83,15 +83,14 @@ class iOSAppium(conf: Config) extends Appium with LogSupport {
   }
 
   def getRidOfAlerts(conf: Config): Boolean = {
+    val ALERT_TEXT_REGEXP = conf.ios.permissionPopup.text.map(_.r.unanchored)
+    val ALLOW_BUTTON_TEXT = conf.ios.permissionPopup.allowButton.map(_.r.anchored)
+    val DISALLOW_BUTTON_TEXT = conf.ios.permissionPopup.dontAllowButton.map(_.r.anchored)
+    var gotRid: Boolean = false
+
     val alert: util.List[WebElement] = this.driver.get
       .asInstanceOf[IOSDriver]
       .findElements(By.className("XCUIElementTypeAlert"))
-    val ALERT_TEXT_REGEXP = conf.ios.permissionPopup.text.map(_.r.unanchored)
-    val ALLOW_BUTTON_TEXT =
-      conf.ios.permissionPopup.allowButton.map(_.r.anchored)
-    val DISALLOW_BUTTON_TEXT =
-      conf.ios.permissionPopup.dontAllowButton.map(_.r.anchored)
-    var gotRid: Boolean = false
     alert.forEach { alertElement =>
       val alertElementText = alertElement.getText.toLowerCase.trim
       if (ALERT_TEXT_REGEXP.exists(regexp => regexp.matches(alertElementText))) {

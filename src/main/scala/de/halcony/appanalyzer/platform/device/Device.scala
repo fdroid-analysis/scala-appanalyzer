@@ -4,14 +4,8 @@ import de.halcony.appanalyzer.Config
 import de.halcony.appanalyzer.appbinary.{Analysis, MobileApp}
 import de.halcony.appanalyzer.platform.exceptions.FatalError
 import de.halcony.appanalyzer.platform.PlatformOS.PlatformOS
-import spray.json.{
-  DefaultJsonProtocol,
-  JsObject,
-  JsString,
-  JsonParser,
-  ParserInput,
-  RootJsonFormat
-}
+import de.halcony.appanalyzer.platform.appium.Appium
+import spray.json.{DefaultJsonProtocol, JsObject, JsString, JsonParser, ParserInput, RootJsonFormat}
 import wvlet.log.LogSupport
 
 import scala.sys.process._
@@ -71,7 +65,7 @@ trait Device extends LogSupport {
 
   def uninstallApp(appId: String): Unit
 
-  def startApp(appId: String, retries: Int = 3): Unit
+  def startApp(appId: String, retries: Int = 3, appium: Option[Appium] = None): Unit
 
   def closeApp(appId: String): Unit
 

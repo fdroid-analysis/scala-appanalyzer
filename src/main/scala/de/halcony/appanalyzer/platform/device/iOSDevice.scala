@@ -5,6 +5,7 @@ import de.halcony.appanalyzer.appbinary.ipa.IPA
 import de.halcony.appanalyzer.appbinary.{Analysis, MobileApp}
 import de.halcony.appanalyzer.platform.frida.{FridaScripts, iOSFridaScripts}
 import de.halcony.appanalyzer.platform.PlatformOS.{PlatformOS, iOS}
+import de.halcony.appanalyzer.platform.appium.Appium
 import de.halcony.appanalyzer.platform.exceptions.{AppClosedItself, UnableToInstallApp, UnableToUninstallApp}
 import spray.json.{JsArray, JsNumber, JsObject, JsString, JsonParser}
 import wvlet.log.LogSupport
@@ -123,7 +124,7 @@ case class iOSDevice(conf: Config) extends Device with LogSupport {
     }
   }
 
-  override def startApp(appId: String, retries: Int): Unit = {
+  override def startApp(appId: String, retries: Int, appium: Option[Appium] = None): Unit = {
     val cmd = s"sshpass -p ${conf.ios.rootpwd} ssh root@${conf.ios.ip} open $appId"
     cmd.!
     Thread.sleep(10000) //we give each app ten seconds to start up

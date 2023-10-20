@@ -110,8 +110,7 @@ class Analysis(description: String,
         warn("there is an already active traffic collection")
       case None =>
         activeTrafficCollection = Some(
-          TrafficCollection
-            .startNewTrafficCollection(this.getId, interfaceId, comment, conf))
+          TrafficCollection.startNewTrafficCollection(this.getId, interfaceId, comment, conf))
         trafficCollectionStart = Some(ZonedDateTime.now())
     }
   }
@@ -180,9 +179,9 @@ class Analysis(description: String,
     }
   }
 
-  private def handlePostAppStartup(interfaceComment: String,
-                                   appium: Appium,
-                                   device: Device): Interface = {
+  private def getAppInterface(interfaceComment: String,
+                              appium: Appium,
+                              device: Device): Interface = {
     device.PLATFORM_OS match {
       case PlatformOS.Android =>
         interaction.Interface(this,
@@ -213,11 +212,11 @@ class Analysis(description: String,
           info("starting app for interface analysis")
           actor.onAppStartup(this)
           if (app.id != "EMPTY")
-            device.startApp(app.id)
-          checkIfAppIsStillRunning(true) // initial check if the app startup even worked
+            device.startApp(app.id, appium = Some(appium))
+          checkIfAppIsStillRunning(false) // initial check if the app startup even worked
           this.checkStop()
           info("extracting start interface")
-          var currentInterface = handlePostAppStartup("initial interface", appium, device)
+          var currentInterface = getAppInterface("initial interface", appium, device)
           currentInterface.insert()
           var running = true
           while (running) {

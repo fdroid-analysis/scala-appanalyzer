@@ -5,10 +5,8 @@ import org.openqa.selenium.WebElement
 class InterfaceElement(element: WebElement) {
 
   private val text = element.getText
-  val isDisplayed
-    : Boolean = true // extracting this information takes too long with appium for some apps
-  val isEnabled
-    : Boolean = true // extracting this information takes too long with appium for some apps
+  val isDisplayed: Boolean = true // extracting this information takes too long with appium for some apps
+  val isEnabled: Boolean = true // extracting this information takes too long with appium for some apps
 
   def getText: String = text
 
@@ -24,4 +22,18 @@ class InterfaceElement(element: WebElement) {
     } catch {
       case _: Throwable => element.getAttribute("type")
     }
+
+  def hasAttributes(elementText: Option[String] = None, elementType: Option[String] = None): Boolean = {
+    elementText match {
+      case Some(value) =>
+        if (value != this.text)
+          return false
+    }
+    elementType match {
+      case Some(value) =>
+        if (value != this.getElementType)
+          return false
+    }
+    true
+  }
 }

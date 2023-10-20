@@ -146,6 +146,7 @@ object Interface extends LogSupport {
       warn("we extract a flat interface only")
       List()
     }
+    // elements.foreach(e => info(s"${e.getElementType}: ${e.getText} - ${e.isEnabled} - ${e.isDisplayed}"))
     new Interface(
       elements,
       analysis,

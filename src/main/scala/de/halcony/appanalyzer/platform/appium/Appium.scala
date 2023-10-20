@@ -2,18 +2,21 @@ package de.halcony.appanalyzer.platform.appium
 
 import de.halcony.appanalyzer
 import de.halcony.appanalyzer.Config
+import de.halcony.appanalyzer.analysis.interaction.InterfaceElement
 import de.halcony.appanalyzer.platform.PlatformOS
 import de.halcony.appanalyzer.platform.device.Device
 import de.halcony.appanalyzer.platform.exceptions.FatalError
 import io.appium.java_client.AppiumDriver
 import io.appium.java_client.clipboard.HasClipboard
+import org.openqa.selenium.interactions.{Actions, PointerInput, Sequence}
 import org.openqa.selenium.remote.ScreenshotException
 import org.openqa.selenium.{By, OutputType, WebElement}
 import wvlet.log.LogSupport
 
 import java.awt.image.BufferedImage
 import java.io.{BufferedWriter, ByteArrayInputStream, FileWriter}
-import java.util.Base64
+import java.time.Duration
+import java.util.{Base64, Collections}
 import javax.imageio.ImageIO
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 import scala.sys.process.{Process, ProcessLogger}
@@ -87,6 +90,13 @@ trait Appium extends LogSupport {
 
   def getAllElements: List[WebElement] = findElementsByXPath("//*")
 
+  def getAllInterfaceElements: List[InterfaceElement] = {
+    getAllElements
+      .map { elem => new InterfaceElement(elem) }
+      .filter(_.getText.trim != "")
+
+  }
+
   /** retrieve currently displayed elements by xpath string
     *
     * @param xpath the xpath to use
@@ -151,6 +161,20 @@ trait Appium extends LogSupport {
 
   def setClipboardContent(content: String): Unit = {
     driver.get.asInstanceOf[HasClipboard].setClipboardText(content)
+  }
+
+  def goBack(): Unit = this.driver.get.navigate().back()
+
+  def touchCoordinate(x: Int, y: Int): Boolean = {
+    val viewportSize = this.driver.get.manage().window().getSize
+    if (x >= 0 && x < viewportSize.width && y >= 0 && y < viewportSize.height) {
+      new Actions(this.driver.get)
+        .moveToLocation(x, y)
+        .click()
+        .perform()
+      return true
+    }
+    false
   }
 
 }
